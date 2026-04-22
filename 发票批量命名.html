@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>发票文件批量重命名</title>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.4.120/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docx-preview@0.2.22/dist/docx-preview.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docx@8.4.0/build/docx.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: linear-gradient(180deg, #fbfbfb, #f4f4f7);
+      min-height: 100vh;
+      width: 100%;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      color: #1d1d1f;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .title {
+      text-align: center;
+      font-size: clamp(24px, 5vw, 34px);
+      font-weight: 700;
+      margin-bottom: clamp(24px, 6vw, 40px);
+      color: #1d1d1f;
+      letter-spacing: 0.5px;
+    }
+
+    .mode-switch {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap:10px;
+      margin-bottom:20px;
+      font-size:15px;
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height:26px;
+    }
+    .switch input{display:none}
+    .slider{
+      position:absolute;
+      cursor:pointer;
+      top:0;left:0;right:0;bottom:0;
+      background:#ccc;
+      border-radius:30px;
+      transition:.3s
+    }
+    .slider:before{
+      position:absolute;
+      content:"";
+      height:20px;width:20px;
+      left:3px;bottom:3px;
+      background:white;border-radius:50%;transition:.3s
+    }
+    input:checked + .slider{background:#34c758}
+    input:checked + .slider:before{transform:translateX(24px)}
+
+    .card {
+      background: #ffffff;
+      border-radius: clamp(16px, 4vw, 22px);
+      padding: clamp(20px, 5vw, 30px);
+      margin-bottom: clamp(12px, 3vw, 20px);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.045);
+      border: 1px solid rgba(0, 0, 0, 0.04);
+      transition: all 0.25s ease;
+      width: 100%;
+    }
+
+    .card:hover {
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.07);
+      transform: translateY(-1px);
+    }
+
+    .card h3 {
+      font-size: clamp(16px, 3.5vw, 18px);
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: #1d1d1f;
+    }
+
+    .card p {
+      font-size: clamp(13px, 3vw, 14px);
+      color: #8e8e93;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+    .upload-box {
+      border: 2px dashed #d2d2d7;
+      border-radius: 14px;
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .upload-box.active {
+      border-color: #007aff;
+      background: rgba(0,122,255,0.05);
+    }
+    .upload-box.success {
+      border-color: #34c758 !important;
+      background: rgba(52,199,88,0.05) !important;
+    }
+    .upload-box-text {
+      font-size: 14px;
+      color: #8e8e93;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    button {
+      width: 100%;
+      background: linear-gradient(135deg, #007aff, #2d8cf0);
+      color: white;
+      border: none;
+      padding: clamp(16px, 4vw, 20px);
+      border-radius: clamp(14px, 3.5vw, 18px);
+      font-size: clamp(15px, 3.5vw, 17px);
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+      box-shadow: 0 6px 18px rgba(0, 122, 255, 0.25);
+      margin-bottom:12px;
+    }
+
+    button:disabled {
+      background: #e2e2e4;
+      color: #8e8e93;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none !important;
+    }
+
+    button:hover:not(:disabled) {
+      opacity: 0.95;
+      transform: translateY(-2px);
+      box-shadow: 0 10px 26px rgba(0, 122, 255, 0.3);
+    }
+
+    .hidden-btn{display:none}
+
+    #log {
+      background: #ffffff;
+      border-radius: clamp(16px, 4vw, 20px);
+      padding: clamp(18px, 4vw, 28px);
+      height: clamp(280px, 50vh, 380px);
+      overflow-y: auto;
+      white-space: pre-wrap;
+      font-size: clamp(12px, 2.8vw, 14px);
+      line-height: 1.6;
+      color: #333;
+      border: 1px solid rgba(0, 0, 0, 0.05);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.04);
+      margin-top: 10px;
+      width: 100%;
+    }
+
+    .success { color: #007aff; font-weight: 600; }
+    .error { color: #ff3b30; font-weight: 600; }
+    .warn { color: #ff9500; font-weight: 600; }
+    .info { color: #6e6e73; }
+
+    #log::-webkit-scrollbar {
+      width: 5px;
+    }
+    #log::-webkit-scrollbar-thumb {
+      background: #d2d2d7;
+      border-radius: 3px;
+    }
+
+    @media (max-width: 480px) {
+      body { padding: 20px 16px; }
+    }
+  </style>
+</head>
+
+<body>
+  <h2 class="title">📑 发票文件批量重命名</h2>
+
+  <div class="mode-switch">
+    <span>普通模式</span>
+    <label class="switch">
+      <input type="checkbox" id="advancedMode">
+      <span class="slider"></span>
+    </label>
+    <span>高级模式</span>
+  </div>
+
+  <div class="card">
+    <h3>1. 上传 Excel 对照表</h3>
+    <p>需包含：编号、物品简写、金额、分类、发票编号</p>
+    <div class="upload-box" id="dropExcel">
+      <p class="upload-box-text">点击 / 拖拽 Excel 文件到此处</p>
+    </div>
+    <input type="file" id="excelFile" accept=".xlsx">
+  </div>
+
+  <div class="card">
+    <h3>2. 上传发票文件压缩包</h3>
+    <p>文件命名：编号（如 1.pdf、2.jpg）</p>
+    <div class="upload-box" id="dropZip">
+      <p class="upload-box-text">点击 / 拖拽 ZIP 压缩包到此处</p>
+    </div>
+    <input type="file" id="zipFile" accept=".zip">
+  </div>
+
+  <div class="card">
+    <button id="startBtn" disabled>开始批量重命名</button>
+    <button id="exportWordBtn" class="hidden-btn">一键整理导出Word</button>
+  </div>
+
+  <div id="log"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
+  <script>
+    let excelData = null;
+    let zipFile = null;
+    let allExcelCodes = new Set();
+    let renamedFileList = [];
+    const MAX_PAGE = 21;
+
+    // 高级模式开关
+    document.getElementById('advancedMode').onchange = function(){
+      const btn = document.getElementById('exportWordBtn')
+      if(this.checked){
+        btn.classList.remove('hidden-btn')
+      }else{
+        btn.classList.add('hidden-btn')
+      }
+    }
+
+    function fix(s) {
+      s = String(s || "").trim();
+      return s === "" ? "无" : s;
+    }
+
+    function log(text, type = "info") {
+      const el = document.getElementById("log");
+      el.innerHTML += `<div class="${type}">${text}</div>`;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function initDrop(boxId, inputId, callback) {
+      const box = document.getElementById(boxId);
+      const input = document.getElementById(inputId);
+
+      box.addEventListener("click", () => input.click());
+      input.addEventListener("change", (e) => callback(e.target.files[0]));
+
+      ["dragenter", "dragover", "dragleave", "drop"].forEach(evt => {
+        box.addEventListener(evt, (e) => e.preventDefault());
+      });
+      ["dragenter", "dragover"].forEach(evt => {
+        box.addEventListener(evt, () => box.classList.add("active"));
+      });
+      ["dragleave", "drop"].forEach(evt => {
+        box.addEventListener(evt, () => box.classList.remove("active"));
+      });
+
+      box.addEventListener("drop", (e) => {
+        const file = e.dataTransfer.files[0];
+        if (file) {
+          input.files = e.dataTransfer.files;
+          callback(file);
+        }
+      });
+    }
+
+    function loadExcel(file) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        const map = {};
+        allExcelCodes.clear();
+        json.forEach(row => {
+          const code = String(row['编号'] || '').trim();
+          if (!code) return;
+          allExcelCodes.add(code);
+          const wupin = fix(row['物品简写']);
+          const jine = fix(row['金额']);
+          const fenlei = fix(row['分类']);
+          const fapiao = fix(row['发票编号']);
+          map[code] = `${wupin}_${jine}_${fenlei}_${fapiao}`;
+        });
+        excelData = map;
+        document.getElementById('dropExcel').classList.add('success');
+        log(`✅ Excel 读取完成，共 ${Object.keys(map).length} 条记录`, "success");
+        checkReady();
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function loadZip(file) {
+      zipFile = file;
+      document.getElementById('dropZip').classList.add('success');
+      log(`✅ 已上传压缩包：${zipFile.name}`, "success");
+      checkReady();
+    }
+
+    initDrop("dropExcel", "excelFile", loadExcel);
+    initDrop("dropZip", "zipFile", loadZip);
+
+    function checkReady() {
+      document.getElementById('startBtn').disabled = !(excelData && zipFile);
+    }
+
+    function splitName(filename) {
+      const i = filename.lastIndexOf('.');
+      return i === -1 ? [filename, ''] : [filename.slice(0, i), filename.slice(i)];
+    }
+
+    window.uploadExcel = (file) => {
+      loadExcel(file);
+      log("📡 API 上传 Excel 成功", "success");
+    };
+
+    window.uploadZip = (file) => {
+      zipFile = file;
+      document.getElementById('dropZip').classList.add('success');
+      log(`📡 API 上传 ZIP 成功：${file.name}`, "success");
+      checkReady();
+    };
+
+    // 重命名主逻辑
+    document.getElementById('startBtn').addEventListener('click', async function () {
+      if (this.innerText === '重新批量重命名') {
+        resetAll();
+        this.innerText = '开始批量重命名';
+        this.disabled = true;
+        renamedFileList = [];
+        return;
+      }
+
+      this.disabled = true;
+      log("\n🚀 开始处理...", "info");
+
+      const zip = await new JSZip().loadAsync(zipFile);
+      const output = new JSZip();
+      const files = Object.values(zip.files).filter(f => !f.dir);
+      
+      let successCount = 0;
+      let failCount = 0;
+      const fileCodes = new Set();
+      const failedFiles = [];
+      renamedFileList = [];
+
+      for (const f of files) {
+        const [name, ext] = splitName(f.name);
+        const code = name.trim();
+        fileCodes.add(code);
+
+        if (excelData[code]) {
+          const newName = excelData[code] + ext;
+          output.file(newName, await f.async('blob'));
+          renamedFileList.push({name:newName, blob:await f.async('blob')})
+          log(`✅ ${f.name} → ${newName}`, "success");
+          successCount++;
+        } else {
+          output.file(f.name, await f.async('blob'));
+          log(`❌ ${f.name} → Excel 无对应编号`, "error");
+          failedFiles.push(f.name);
+          failCount++;
+        }
+      }
+
+      const noFileCodes = [];
+      allExcelCodes.forEach(c => {
+        if (!fileCodes.has(c)) noFileCodes.push(c);
+      });
+
+      log("\n==================== 统计结果 ====================", "info");
+      log(`📌 总文件数：${files.length}`, "info");
+      log(`✅ 重命名成功：${successCount} 个`, "success");
+      log(`❌ 重命名失败：${failCount} 个`, "error");
+      
+      if (failedFiles.length > 0) {
+        log("\n==================== 失败文件明细 ====================", "error");
+        failedFiles.forEach(file => log(`❌ ${file} → Excel 无匹配编号`, "error"));
+      }
+
+      if (noFileCodes.length > 0) {
+        log(`\n⚠️ 无对应文件的编号（共 ${noFileCodes.length} 个）：${noFileCodes.join('、')}`, "warn");
+      } else {
+        log(`\n📌 所有Excel编号均已匹配文件`, "success");
+      }
+
+      log("\n📦 正在生成新压缩包...", "info");
+      const blob = await output.generateAsync({ type: 'blob' });
+      saveAs(blob, "重命名完成_发票文件.zip");
+      log("🎉 全部处理完成！", "success");
+
+      document.getElementById('startBtn').innerText = '重新批量重命名';
+      document.getElementById('startBtn').disabled = false;
+    });
+
+    function resetAll() {
+      excelData = null;
+      zipFile = null;
+      allExcelCodes.clear();
+      document.getElementById('log').innerHTML = '';
+      document.getElementById('dropExcel').classList.remove('success');
+      document.getElementById('dropZip').classList.remove('success');
+      document.getElementById('excelFile').value = '';
+      document.getElementById('zipFile').value = '';
+      log("🔄 已重置，可以重新上传文件", "info");
+    }
+
+    // Word导出核心
+    async function fileToImages(blob, filename){
+      const ext = filename.split('.').pop().toLowerCase()
+      const imgs = []
+      if(['jpg','jpeg','png','webp'].includes(ext)){
+        return [URL.createObjectURL(blob)]
+      }
+      if(ext === 'pdf'){
+        const pdf = await pdfjsLib.getDocument({data:await blob.arrayBuffer()}).promise
+        const total = Math.min(pdf.numPages,MAX_PAGE)
+        for(let i=1;i<=total;i++){
+          const page = await pdf.getPage(i)
+          const scale =1.5
+          const canvas = document.createElement('canvas')
+          const ctx = canvas.getContext('2d')
+          const viewport = page.getViewport({scale})
+          canvas.width = viewport.width
+          canvas.height = viewport.height
+          await page.render({canvasContext:ctx,viewport}).promise
+          imgs.push(canvas.toDataURL('image/png'))
+        }
+        return imgs
+      }
+      if(ext === 'docx' || ext === 'doc'){
+        const html = await window.docxPreview.renderAsync(await blob.arrayBuffer())
+        const dom = document.createElement('div')
+        dom.innerHTML = html
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        canvas.width = 900
+        canvas.height = 1200
+        ctx.fillStyle='#fff'
+        ctx.fillRect(0,0,900,1200)
+        await html2canvas(dom,{canvas}).then(c=>{
+          imgs.push(c.toDataURL('image/png'))
+        })
+        return imgs.slice(0,MAX_PAGE)
+      }
+      return []
+    }
+
+    document.getElementById('exportWordBtn').onclick = async ()=>{
+      if(renamedFileList.length===0){
+        log("❌ 请先完成文件重命名",'error')
+        return
+      }
+      log("\n📄 正在生成整理Word文档...",'info')
+      // 按重命名后的物品名称顺序排序
+      renamedFileList.sort((a,b)=>a.name.localeCompare(b.name,'zh-CN'))
+
+      const {Document,Packer,Paragraph,ImageRun} = window.docx
+      const doc = new Document()
+
+      for(const item of renamedFileList){
+        const imgs = await fileToImages(item.blob,item.name)
+        for(const img of imgs){
+          const base64 = img.split(',')[1]
+          const buf = Uint8Array.from(atob(base64),c=>c.charCodeAt(0))
+          const para = new Paragraph({
+            children:[new ImageRun({data:buf,width:520,height:720})]
+          })
+          doc.addParagraph(para)
+        }
+      }
+
+      const out = await Packer.toBuffer(doc)
+      saveAs(new Blob([out]),"发票整理文档.docx")
+      log("✅ Word文档导出完成",'success')
+    }
+  </script>
+</body>
+</html>
