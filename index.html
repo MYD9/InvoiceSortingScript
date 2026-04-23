@@ -203,9 +203,19 @@
     <span>高级模式</span>
   </div>
 
+  <!-- 新增：筛选功能开关 -->
+  <div class="mode-switch">
+    <span>筛选功能</span>
+    <label class="switch">
+      <input type="checkbox" id="filterMode" checked> <!-- 默认开启 -->
+      <span class="slider"></span>
+    </label>
+    <span>已开启</span>
+  </div>
+
   <div class="card">
     <h3>1. 上传 Excel 对照表</h3>
-    <p>需包含：编号、物品简写、金额、分类、发票编号</p>
+    <p>需包含：编号、物品简写、金额、分类、发票编号、审核状态、报销状态</p>
     <div class="upload-box" id="dropExcel">
       <p class="upload-box-text">点击 / 拖拽 Excel 文件到此处</p>
     </div>
@@ -239,13 +249,25 @@
     let renamedFileList = [];
     const MAX_PAGE = 21;
 
-    // 高级模式开关
+    // 高级模式切换
     document.getElementById('advancedMode').onchange = function(){
       const btn = document.getElementById('exportWordBtn')
       if(this.checked){
         btn.classList.remove('hidden-btn')
       }else{
         btn.classList.add('hidden-btn')
+      }
+    }
+
+    // 新增：筛选功能切换
+    document.getElementById('filterMode').onchange = function(){
+      const text = this.nextElementSibling.nextElementSibling;
+      if(this.checked){
+        text.textContent = "已开启";
+        log("✅ 筛选功能已开启：仅重命名【审核通过+待报销】的文件", "success");
+      }else{
+        text.textContent = "已关闭";
+        log("ℹ️ 筛选功能已关闭：重命名所有匹配编号的文件", "info");
       }
     }
 
@@ -294,9 +316,24 @@
         const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
         const map = {};
         allExcelCodes.clear();
+        
+        const filterEnabled = document.getElementById('filterMode').checked;
+
         json.forEach(row => {
           const code = String(row['编号'] || '').trim();
           if (!code) return;
+
+          // 读取新增字段
+          const examineStatus = fix(row['审核状态']);
+          const reimburseStatus = fix(row['报销状态']);
+          
+          // 筛选逻辑：开启筛选时，只保留 审核通过 + 待报销
+          if (filterEnabled) {
+            if (examineStatus !== "审核通过" || reimburseStatus !== "待报销") {
+              return;
+            }
+          }
+
           allExcelCodes.add(code);
           const wupin = fix(row['物品简写']);
           const jine = fix(row['金额']);
@@ -304,9 +341,10 @@
           const fapiao = fix(row['发票编号']);
           map[code] = `${wupin}_${jine}_${fenlei}_${fapiao}`;
         });
+
         excelData = map;
         document.getElementById('dropExcel').classList.add('success');
-        log(`✅ Excel 读取完成，共 ${Object.keys(map).length} 条记录`, "success");
+        log(`✅ Excel 读取完成，筛选后有效记录：${Object.keys(map).length} 条`, "success");
         checkReady();
       };
       reader.readAsArrayBuffer(file);
@@ -343,7 +381,6 @@
       checkReady();
     };
 
-    // 重命名主逻辑
     document.getElementById('startBtn').addEventListener('click', async function () {
       if (this.innerText === '重新批量重命名') {
         resetAll();
@@ -379,7 +416,7 @@
           successCount++;
         } else {
           output.file(f.name, await f.async('blob'));
-          log(`❌ ${f.name} → Excel 无对应编号`, "error");
+          log(`❌ ${f.name} → 不匹配筛选条件 / Excel 无对应编号`, "error");
           failedFiles.push(f.name);
           failCount++;
         }
@@ -397,13 +434,13 @@
       
       if (failedFiles.length > 0) {
         log("\n==================== 失败文件明细 ====================", "error");
-        failedFiles.forEach(file => log(`❌ ${file} → Excel 无匹配编号`, "error"));
+        failedFiles.forEach(file => log(`❌ ${file} → 不匹配筛选条件 / 无匹配编号`, "error"));
       }
 
       if (noFileCodes.length > 0) {
-        log(`\n⚠️ 无对应文件的编号（共 ${noFileCodes.length} 个）：${noFileCodes.join('、')}`, "warn");
+        log(`\n⚠️ 无对应文件的有效编号（共 ${noFileCodes.length} 个）：${noFileCodes.join('、')}`, "warn");
       } else {
-        log(`\n📌 所有Excel编号均已匹配文件`, "success");
+        log(`\n📌 所有有效编号均已匹配文件`, "success");
       }
 
       log("\n📦 正在生成新压缩包...", "info");
@@ -427,7 +464,6 @@
       log("🔄 已重置，可以重新上传文件", "info");
     }
 
-    // Word导出核心
     async function fileToImages(blob, filename){
       const ext = filename.split('.').pop().toLowerCase()
       const imgs = []
@@ -474,7 +510,6 @@
         return
       }
       log("\n📄 正在生成整理Word文档...",'info')
-      // 按重命名后的物品名称顺序排序
       renamedFileList.sort((a,b)=>a.name.localeCompare(b.name,'zh-CN'))
 
       const {Document,Packer,Paragraph,ImageRun} = window.docx
